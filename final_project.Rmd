@@ -1,0 +1,448 @@
+---
+title: "Student Habits' can predict Exam Scores"
+subtitle: "What will you score on your exam? Your habits can tell you"
+output: html_notebook
+date: "2025-05-01"
+author: "Elise Harrell"
+--- 
+```{r setup, include = FALSE}
+library(tidyverse)
+library(readr)
+library(forcats)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+```
+
+
+## Introduction to dataset
+In this project, we explore whether student daily habits and stress levels can predict exam performance. We'll use a dataset containing behavioral variables such as study time, sleep hours, and stress levels to build a predictive model.
+
+This data set is from Kaggle (Find Link at end of Post)
+
+```{r}
+data <- read_csv("student_habits_performance.csv")
+glimpse(data)
+```
+
+## Data Wrangling
+
+Now I am going to clean up some of our categorical variables, like changing Exam Scores into a factor, so it can be predicted with a decision tree.
+
+Here I create a categorical variable to distinguish between high and low exam scores.
+```{r}
+data$exam_score <- cut(
+  data$exam_score, 
+  breaks = c(0,60,70,80,90,100), 
+  labels=c("F","D", "C", "B", "A"),
+  ordered_result = TRUE)
+
+levels(data$exam_score)
+```
+
+I will also change a few other categorical variables into factors so they can be ordered and useful for our predictions
+```{r}
+unique(data$diet_quality)
+
+data$diet_quality <- factor(
+  data$diet_quality, 
+  levels =c("Poor", "Fair", "Good"), 
+  ordered = TRUE)
+
+levels(data$diet_quality)
+```
+
+```{r}
+#gender
+unique(data$gender)
+
+data$gender <- factor(
+  data$gender, 
+  levels = c("Female", "Male", "Other"))
+
+levels(data$gender)
+```
+
+
+```{r}
+#part_time_job
+unique(data$part_time_job)
+
+data$part_time_job <- factor(
+  data$part_time_job, 
+  levels = c("No", "Yes")
+  )
+
+levels(data$part_time_job)
+```
+
+
+```{r}
+#parental_education_level
+unique(data$parental_education_level)
+
+data$parental_education_level <- factor(
+  data$parental_education_level, 
+  levels =c( "None", "High School", "Bachelor", "Master"), 
+  ordered = TRUE)
+
+levels(data$parental_education_level)
+```
+
+
+```{r}
+#internet_quality 
+unique(data$internet_quality)
+
+data$internet_quality <- factor(
+  data$internet_quality, 
+  levels =c("Poor", "Average", "Good"), 
+  ordered = TRUE)
+
+levels(data$internet_quality)
+```
+
+
+```{r}
+#extracurricular_participation
+unique(data$extracurricular_participation)
+
+data$extracurricular_participation <- factor(
+  data$extracurricular_participation,
+  levels =c("No", "Yes"))
+```
+
+
+```{r, include = FALSE}
+sum(is.na(data))
+
+unique(data$mental_health_rating)
+```
+
+Here is our finished result of our data wrangling.
+
+```{r}
+
+print(data)
+
+```
+
+## Data Visualization
+
+Here I want to get an idea of the relationship between the variables
+```{r}
+#Exam scores by stress level
+ggplot(data, aes(x = exam_score, fill =part_time_job )) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Exam Score",
+    y = "Fraction of Respondents",
+    fill = "Part Time Job",
+    title = "Part Time Jobs by Exam Scores of Students"
+  ) +
+  theme_minimal()
+```
+
+I can see a very small correlation between the two variables. More students that failed, have part time jobs.
+
+
+```{r}
+ggplot(data, aes(x = parental_education_level, fill = exam_score)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Parental Edcuation Level",
+    y = "Fraction of Respondents",
+    fill = "Exam_Score",
+    title = "Parental Edcuation Level by Exam Scores of Students"
+  ) +
+  theme_minimal()
+```
+
+It is hard to see if there is a correlation, due to the amount of levels of each variable, but we can see a slight correlation in the A's, where the fraction of respondentss getting an A is higher as the education goes up, before decreasing with Master's degrees.
+
+```{r}
+ggplot(data, aes(x = exam_score, fill = diet_quality )) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Exam Scores",
+    y = "Fraction of Respondents",
+    fill = "Diet Quality",
+    title = "Quality of Diet by Exam Scores of Students"
+  ) +
+  theme_minimal()
+```
+
+Again we can see a correlation between the data, with a majortity of A students getting a good or fair diet, and the fraction of those categories getting smaller as it decreases, except for F which seems to be the exception.
+
+```{r}
+ggplot(data, aes(y = exam_score, x = mental_health_rating)) +
+  geom_boxplot() +
+  labs(
+    y = "Test Scores",
+    x = "Mental Health",
+    title = "Test Scores by Mental Health Rating"
+  ) +
+  theme_minimal()
+```
+
+Here we can see a clear correllation between test scores and mental health. The majority of people with poor mental health scores, getting F's and D's and the majority of people getting A's having better mental health.
+
+
+```{r}
+ggplot(data, aes(y = exam_score, x = study_hours_per_day)) +
+  geom_boxplot() +
+  labs(
+    y = "Test Scores",
+    x = "Study Hours",
+    title = "Test Scores by Hours Spent Studying"
+  ) +
+  theme_minimal()
+```
+
+Students with better mental health, when studying the same amount of time as their counterparts, perform better on the exam
+
+
+```{r}
+ggplot(data, aes(x=social_media_hours, y=sleep_hours, color=exam_score))+
+  geom_point()+
+  labs(
+    x = "Hours on Social Media",
+    y = "Hours Sleeping",
+    fill = "Exam Score",
+    title = "Hours of Social Media vs Hours of Sleep by Exam Score"
+  ) +
+  theme_minimal()
+```
+
+Here I see no correlation between hours sleeping and hours on social media.
+
+
+## Modeling
+
+Now I want to break up the data, so we can have a training data set and a test data set for our decision tree.
+
+```{r}
+set.seed(4256)
+
+#Create indexes to split the data and hide the actual exam score
+train_indexes <- as.vector(
+  createDataPartition(
+    data$exam_score, 
+    p = 0.75, 
+    list=FALSE))
+
+#Split the data into train and test using the indexes we created
+mh_train <- slice(data, train_indexes)
+mh_test <- slice(data, -train_indexes)
+```
+
+Lets create a decision tree using all our variables to start.
+
+```{r}
+#age + gender + study_hours_per_day + social_media_hours + netflix_hours + part_time_job + attendance_percentage + sleep_hours + diet_quality + exercise_frequency + parental_education_level + extracurricular_participation
+tree<-rpart(exam_score ~ age + gender + study_hours_per_day + social_media_hours + netflix_hours + part_time_job + attendance_percentage + sleep_hours + diet_quality + exercise_frequency + parental_education_level + extracurricular_participation + mental_health_rating, data = mh_train, method = "class")
+```
+
+
+Now lets plot that tree and look at what variables were important.
+
+```{r}
+
+rpart.plot(tree, main="Decision Tree: All")
+
+tree$variable.importance
+```
+Now lets create a tree using only the important and highly correlated variables.
+
+Our Variables: Study Hours, Social Media Hours, Netflix Hours, Part Time Hours, Attendance Percentage, Sleep Hours, Diet Quality, Parental Education Level, Extracurricular Participation, and Mental Health Rating
+
+```{r}
+#Create the decision tree
+tree1<-rpart(exam_score ~ study_hours_per_day + social_media_hours + netflix_hours + part_time_job + attendance_percentage + sleep_hours + diet_quality + parental_education_level + extracurricular_participation + mental_health_rating, data = mh_train, method = "class")
+
+#Plot the decision tree
+rpart.plot(tree1, main="Decision Tree 1: Important Variables")
+```
+
+Now I also want to create a graph based on habits only, using only variables that a student can control or change.
+
+Our Variables: Study Hours, Social Media Hours, Netflix Hours, Attendence Percentage, Sleep Hours, Diet Quality and Exercise Frequency
+
+```{r}
+#Create the decision tree
+tree2<-rpart(exam_score ~ study_hours_per_day + social_media_hours + netflix_hours + attendance_percentage + sleep_hours + diet_quality + exercise_frequency, data = mh_train, method = "class")
+
+#Plot the decision tree
+rpart.plot(tree2, main="Decision Tree 2: Habits")
+```
+
+
+
+## Analysis
+
+Now lets analyze our trees.
+
+I want to look at the probablity that a tree will correctly identify a student as getting an F on the exam.
+
+And then graph the ROC curve to see how well the tree is predicting F values.
+```{r}
+binary_labels <- mh_test$exam_score == "F"
+
+# Predicted probabilities for 'exceptional' class
+prob1 <- predict(tree1, newdata = mh_test, type = "prob")[, "F"]
+prob2 <- predict(tree2, newdata = mh_test, type = "prob")[, "F"]
+
+# ROC curves using binary labels
+roc1 <- roc(binary_labels, prob1)
+roc2 <- roc(binary_labels, prob2)
+
+# Plot ROC curves
+plot(roc1, col = "blue", main = "ROC Curves for Predicting F's")
+plot(roc2, add = TRUE, col = "red")
+
+
+```
+Our F's are predicted pretty well with both trees.
+
+Now lets do it with the rest of the grades.
+
+```{r}
+binary_labels <- mh_test$exam_score == "D"
+
+# Predicted probabilities for 'exceptional' class
+prob1 <- predict(tree1, newdata = mh_test, type = "prob")[, "D"]
+prob2 <- predict(tree2, newdata = mh_test, type = "prob")[, "D"]
+
+# ROC curves using binary labels
+roc1 <- roc(binary_labels, prob1)
+roc2 <- roc(binary_labels, prob2)
+
+# Plot ROC curves
+plot(roc1, col = "blue", main = "ROC Curves for Predicting D's")
+plot(roc2, add = TRUE, col = "red")
+
+```
+
+Our D's are not being well predicted. Only being slighly above random.
+
+
+```{r}
+binary_labels <- mh_test$exam_score == "C"
+
+# Predicted probabilities for 'exceptional' class
+prob1 <- predict(tree1, newdata = mh_test, type = "prob")[, "C"]
+prob2 <- predict(tree2, newdata = mh_test, type = "prob")[, "C"]
+
+# ROC curves using binary labels
+roc1 <- roc(binary_labels, prob1)
+roc2 <- roc(binary_labels, prob2)
+
+# Plot ROC curves
+plot(roc1, col = "blue", main = "ROC Curves for Predicting C's")
+plot(roc2, add = TRUE, col = "red")
+
+```
+
+Our C's are predicted much better on the first decision tree, using all our important predictors, whereas the second tree is having a harder time.
+
+
+
+```{r}
+binary_labels <- mh_test$exam_score == "B"
+
+# Predicted probabilities for 'exceptional' class
+prob1 <- predict(tree1, newdata = mh_test, type = "prob")[, "B"]
+prob2 <- predict(tree2, newdata = mh_test, type = "prob")[, "B"]
+
+# ROC curves using binary labels
+roc1 <- roc(binary_labels, prob1)
+roc2 <- roc(binary_labels, prob2)
+
+# Plot ROC curves
+plot(roc1, col = "blue", main = "ROC Curves for Predicting B's")
+plot(roc2, add = TRUE, col = "red")
+
+```
+
+Our B's are being predicted pretty acurately as well, both graphs performing similarly.
+
+
+```{r}
+binary_labels <- mh_test$exam_score == "A"
+
+# Predicted probabilities for 'exceptional' class
+prob1 <- predict(tree1, newdata = mh_test, type = "prob")[, "A"]
+prob2 <- predict(tree2, newdata = mh_test, type = "prob")[, "A"]
+
+# ROC curves using binary labels
+roc1 <- roc(binary_labels, prob1)
+roc2 <- roc(binary_labels, prob2)
+
+# Plot ROC curves
+plot(roc1, col = "blue", main = "ROC Curves for Predicting A's")
+plot(roc2, add = TRUE, col = "red")
+```
+
+This is the grade with the highest ROC score, meaning this grade is most likely to be predicted correctly, though the first tree using all our important variables has a higher ROC.
+
+
+Now to get an idea of how all this comes together, lets create a confusion matrix.
+
+
+```{r}
+#Predict the classes for tree1
+predict1<- predict(
+  tree1, 
+  newdata=mh_test, 
+  type="class")
+
+#Predict the classes for tree2
+predict2<- predict(
+  tree2, 
+  newdata=mh_test, 
+  type="class")
+
+#Compare predictions to the actual class
+actual_class <- mh_test$exam_score
+
+#Graph the predictions in a confucion matrix against their actual classes
+confusionMatrix(predict1,actual_class)
+confusionMatrix(predict2,actual_class)
+```
+By looking at the confusion matrix we can see that both trees are having issues finding the middle grades, B, C and D, as they can be hard to distinguish between.
+
+The first tree using the important variables performs better overall, except on labeling D grade tests, whereas the second tree using only habits, does better predicting D grade tests, but struggles more in the other grades.
+
+For both graphs however, they perform well on A and F grade tests.
+
+We want to see if we can somehow fix this imbalance however. Let's check to see if the reason for the struggle on identifying middle grades is because there is an imblance of them in the data.
+```{r}
+table(data$exam_score)
+```
+Looking at this there is not an imbalance in the D, C and B classes, so that is not causing the issue. 
+
+If we want to continue and make our machine learning model more predictive here are some ways I think I would improve it.
+
+  Feature engineering — add more informative habits or behavior variables.
+  Flexible models — like Random Forests or Gradient Boosting 
+  Consider combining neighboring grades (e.g., group C/D or B/C) — If the   difference between grades is not significant, you can combine grade levels to make it more predictive
+  
+
+## Conclusion/Discussion
+
+This project set out to determine whether student habits and stress levels could predict exam performance. Through data wrangling, exploratory analysis, and classification via decision trees, I believe I found some meaningful patterns. My models showed strong predictive power for extreme outcomes — A and F grades — but struggled with mid-range grades (B, C, D), which I think is likely due to overlapping behavioral patterns among those students.
+
+While class imbalance wasn't the cause, model flexibility and feature diversity could improve performance. Enhancing the model with advanced algorithms like Random Forests or Gradient Boosting, and engineering new features (e.g., time of study, social activity levels, or detailed sleep patterns), may yield better accuracy. Grouping similar grades could also make classification more robust.
+
+Overall, this study illustrates that student habits do play a significant role in academic performance. With further refinement, predictive models like these could one day help educators and students identify at-risk learners or optimize study strategies.
+
+## References
+
+Kaggle Dataset: https://www.kaggle.com/datasets/jayaantanaath/student-habits-vs-academic-performance/data
